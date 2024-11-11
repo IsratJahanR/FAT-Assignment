@@ -5,6 +5,7 @@ uint32_t current_dir_cluster;
 
 FILE *disk_img = NULL;
 BootSector bs;
+//hi
 char current_image_name[Mx_FILENAME_LENGTH];
 
 int open_filesystem(const char *imageFilename);
