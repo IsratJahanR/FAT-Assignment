@@ -6,7 +6,8 @@ CFLAGS = -g -Wall -Werror
 TARGET = mfs
 
 # Source files
-SRCS = mfs.c
+SRCS = mfs.c 
+HEADERS = mfs.h struct.h
 
 # Object files
 OBJS = $(SRCS:.c=.o)
@@ -25,4 +26,3 @@ clean:
 
 # Phony targets
 .PHONY: clean
-
