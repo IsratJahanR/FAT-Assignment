@@ -44,9 +44,10 @@ typedef struct {
    uint8_t driveNumber;
 } __attribute__((packed)) BootSector;
 
+// External declarations for global variables
 extern FILE *disk_img;
 extern BootSector bs;
 extern char current_image_name[Mx_FILENAME_LENGTH];
 extern uint32_t current_dir_cluster;
 
-#endif 
+#endif // STRUCTURES_H

@@ -12,6 +12,7 @@
 #define SECTOR_SIZE 512
 #define Mx_COMMAND_LENGTH 1024
 
+// File attributes
 #define ATTRIBUTE_SYSTEM 0x04
 #define ATTRIBUTE_VOLUME_ID 0x08
 #define ATTRIBUTE_DIRECTORY 0x10
@@ -24,10 +25,11 @@
 #define FORMAT_ASCII 1
 #define FORMAT_DEC 2
 
+// Function prototypes
 int open_filesystem(const char *filename);
 void close_filesystem(void);
 int save_filesystem(const char *newname);
 void print_info(void);
 void process_command(char *cmd);
 
-#endif 
+#endif // MFS_H

@@ -1,18 +1,23 @@
 #include "mfs.h"
 #include "struct.h"
 
+// Add these global variables
 uint32_t current_dir_cluster;
 
+// Global variables
 FILE *disk_img = NULL;
 BootSector bs;
-//hi
 char current_image_name[Mx_FILENAME_LENGTH];
 
+//------------------------------------------------------------------------------------------------
+
+// Function prototypes for file system operations
 int open_filesystem(const char *imageFilename);
 void close_filesystem(void);
 void display_filesystem_info(void);
 void execute_command(char *commandLine);
 
+// Additional function prototypes for file and directory management
 uint32_t get_first_sector_of_cluster(uint32_t clusterNumber);
 uint32_t get_fat_entry(uint32_t clusterNumber);
 void convert_to_fat_filename(const char *input, char *output);
@@ -22,6 +27,7 @@ int read_disk_sector(uint32_t sector, void *buffer);
 int write_disk_sector(uint32_t sector, const void *buffer);
 void upload_file(const char *sourceFile, const char *newFilename);
 
+// Additional functions for FAT management
 void update_fat_entry(uint32_t clusterNumber, uint32_t value);
 void read_file_content(const char *filename, uint32_t startPosition, uint32_t byteCount, int format);
 void delete_file(const char *filename);
@@ -29,6 +35,9 @@ void restore_deleted_file(const char *filename);
 DirEntry* find_deleted_file_entry(const char* filename, uint32_t clusterNumber, uint32_t* sectorNum, int* entryIdx, int includeDeleted);
 
 
+// Implementation of new utility functions
+
+// Add this implementation with your other utility functions
 void update_fat_entry(uint32_t cluster, uint32_t value)
 {
     uint32_t fat_offset = cluster * 4;
@@ -37,14 +46,17 @@ void update_fat_entry(uint32_t cluster, uint32_t value)
 
     uint8_t buffer[SECTOR_SIZE];
 
+    // Read the FAT sector
     if (read_disk_sector(fat_sector, buffer) != 1)
     {
         return;
     }
 
+    // Update the entry
     uint32_t *fat_entry = (uint32_t *)(&buffer[ent_offset]);
     *fat_entry = (*fat_entry & 0xF0000000) | (value & 0x0FFFFFFF);
 
+    // Write the sector back to all FATs
     for (int i = 0; i < bs.numberOfFATs; i++)
     {
         uint32_t current_fat_sector = fat_sector + (i * bs.fatSize32);
@@ -100,6 +112,7 @@ void convert_to_fat_filename(const char *input, char *expanded)
     }
 }
 
+// Implementation of read_disk_sector
 int read_disk_sector(uint32_t sector, void *buffer)
 {
     if (!disk_img)
@@ -108,6 +121,7 @@ int read_disk_sector(uint32_t sector, void *buffer)
     return fread(buffer, bs.bytesPerSector, 1, disk_img);
 }
 
+// Implementation of write_disk_sector
 int write_disk_sector(uint32_t sector, const void *buffer)
 {
     if (!disk_img)
@@ -131,9 +145,9 @@ DirEntry *find_file_entry(const char *filename, uint32_t dir_cluster)
         for (int i = 0; i < bs.bytesPerSector / sizeof(DirEntry); i++)
         {
             if (dir[i].DIR_Name[0] == 0x00)
-                return NULL; 
+                return NULL; // End of directory
             if (dir[i].DIR_Name[0] == 0xE5)
-                continue; 
+                continue; // Deleted entry
 
             if (strncmp((char *)dir[i].DIR_Name, filename, 11) == 0)
             {
@@ -152,6 +166,7 @@ DirEntry *find_file_entry(const char *filename, uint32_t dir_cluster)
 
     return NULL;
 }
+// Implementation of new command functions
 
 DirEntry* find_deleted_file_entry(const char* filename, uint32_t cluster, uint32_t* sector_num, int* entry_index, int include_deleted) {
     static DirEntry dir_entry;
@@ -166,11 +181,14 @@ DirEntry* find_deleted_file_entry(const char* filename, uint32_t cluster, uint32
 
             DirEntry* dir = (DirEntry*)buffer;
             for (int j = 0; j < bs.bytesPerSector / sizeof(DirEntry); j++) {
+                // Check for end of directory
                 if (dir[j].DIR_Name[0] == 0x00) {
                     return NULL;
                 }
 
+                // For deleted files
                 if (dir[j].DIR_Name[0] == 0xE5 && include_deleted) {
+                    // Compare the rest of the name (skip first character)
                     if (memcmp(dir[j].DIR_Name + 1, filename + 1, 10) == 0) {
                         if (sector_num) *sector_num = sector + i;
                         if (entry_index) *entry_index = j;
@@ -178,6 +196,7 @@ DirEntry* find_deleted_file_entry(const char* filename, uint32_t cluster, uint32
                         return &dir_entry;
                     }
                 }
+                // For normal files
                 else if (dir[j].DIR_Name[0] != 0xE5 && !include_deleted) {
                     if (strncmp((char*)dir[j].DIR_Name, filename, 11) == 0) {
                         if (sector_num) *sector_num = sector + i;
@@ -189,6 +208,7 @@ DirEntry* find_deleted_file_entry(const char* filename, uint32_t cluster, uint32
             }
         }
 
+        // Move to next cluster
         uint32_t next_cluster = get_fat_entry(cluster);
         if (next_cluster >= EOC) break;
         cluster = next_cluster;
@@ -220,15 +240,18 @@ void delete_file(const char* filename) {
         return;
     }
 
+    // Read sector containing the entry
     uint8_t buffer[SECTOR_SIZE];
     if (read_disk_sector(sector_num, buffer) != 1) {
         printf("Error: Could not read sector\n");
         return;
     }
 
+    // Mark file as deleted
     DirEntry* dir = (DirEntry*)buffer;
     dir[entry_index].DIR_Name[0] = 0xE5;
 
+    // Write back the modified sector
     if (write_disk_sector(sector_num, buffer) != 1) {
         printf("Error: Could not write sector\n");
         return;
@@ -255,15 +278,18 @@ void restore_deleted_file(const char* filename) {
         return;
     }
 
+    // Read sector containing the entry
     uint8_t buffer[SECTOR_SIZE];
     if (read_disk_sector(sector_num, buffer) != 1) {
         printf("Error: Could not read sector\n");
         return;
     }
 
+    // Restore the file by setting the first character of the filename
     DirEntry* dir = (DirEntry*)buffer;
     dir[entry_index].DIR_Name[0] = expanded_name[0];
 
+    // Write back the modified sector
     if (write_disk_sector(sector_num, buffer) != 1) {
         printf("Error: Could not write sector\n");
         return;
@@ -271,6 +297,7 @@ void restore_deleted_file(const char* filename) {
 
     printf("File restored successfully\n");
 }
+
 
 void read_file_content(const char *filename, uint32_t position, uint32_t num_bytes, int format)
 {
@@ -302,6 +329,7 @@ void read_file_content(const char *filename, uint32_t position, uint32_t num_byt
         return;
     }
 
+    // Adjust num_bytes if it would read past end of file
     if (position + num_bytes > entry->DIR_FileSize)
     {
         num_bytes = entry->DIR_FileSize - position;
@@ -311,6 +339,7 @@ void read_file_content(const char *filename, uint32_t position, uint32_t num_byt
     uint32_t bytes_per_cluster = bs.bytesPerSector * bs.sectorsPerCluster;
     uint32_t clusters_to_skip = position / bytes_per_cluster;
 
+    // Skip to the correct cluster
     for (uint32_t i = 0; i < clusters_to_skip && cluster < EOC; i++)
     {
         cluster = get_fat_entry(cluster);
@@ -349,7 +378,7 @@ void read_file_content(const char *filename, uint32_t position, uint32_t num_byt
 
         memcpy(buffer + bytes_read, sector_buffer + byte_offset, bytes_to_read);
         bytes_read += bytes_to_read;
-        position_in_cluster = 0; 
+        position_in_cluster = 0; // Reset for next cluster
 
         if (bytes_read < num_bytes)
         {
@@ -357,6 +386,7 @@ void read_file_content(const char *filename, uint32_t position, uint32_t num_byt
         }
     }
 
+    // Output the bytes in the specified format
     for (uint32_t i = 0; i < bytes_read; i++)
     {
         switch (format)
@@ -383,27 +413,33 @@ void upload_file(const char *filename, const char *newname) {
         return;
     }
 
+    // Open the source file from local directory
     FILE *src_file = fopen(filename, "rb");
     if (!src_file) {
         printf("Error: File not found\n");
         return;
     }
 
+    // Get file size
     fseek(src_file, 0, SEEK_END);
     uint32_t file_size = ftell(src_file);
     fseek(src_file, 0, SEEK_SET);
 
+    // Prepare directory entry
     DirEntry new_entry;
     memset(&new_entry, 0, sizeof(DirEntry));
     const char *entry_name = newname ? newname : filename;
 
+    // Expand the filename to FAT format
     char expanded_name[12];
     convert_to_fat_filename(entry_name, expanded_name);
     memcpy(new_entry.DIR_Name, expanded_name, 11);
 
+    // Set attributes and size
     new_entry.DIR_Attr = ATTRIBUTE_ARCHIVE;
     new_entry.DIR_FileSize = file_size;
 
+    // Search for free entry in directory
     uint32_t cluster = current_dir_cluster;
     uint32_t sector;
     uint8_t sector_buffer[SECTOR_SIZE];
@@ -413,6 +449,7 @@ void upload_file(const char *filename, const char *newname) {
     while (!entry_found) {
         sector = get_first_sector_of_cluster(cluster);
         
+        // Search all sectors in current cluster
         for (int sec = 0; sec < bs.sectorsPerCluster; sec++) {
             if (read_disk_sector(sector + sec, sector_buffer) != 1) {
                 printf("Error: Could not read directory sector\n");
@@ -425,7 +462,7 @@ void upload_file(const char *filename, const char *newname) {
                 if (dir[i].DIR_Name[0] == 0x00 || dir[i].DIR_Name[0] == 0xE5) {
                     entry_found = 1;
                     entry_index = i;
-                    sector += sec;  
+                    sector += sec;  // Update sector number
                     break;
                 }
             }
@@ -433,8 +470,10 @@ void upload_file(const char *filename, const char *newname) {
         }
 
         if (!entry_found) {
+            // Try next cluster
             uint32_t next_cluster = get_fat_entry(cluster);
             if (next_cluster >= EOC) {
+                // TODO: Allocate new cluster for directory
                 printf("Error: Directory full\n");
                 fclose(src_file);
                 return;
@@ -443,6 +482,7 @@ void upload_file(const char *filename, const char *newname) {
         }
     }
 
+    // Rest of your existing code for copying file contents
     uint8_t buffer[SECTOR_SIZE];
     uint32_t bytes_remaining = file_size;
     uint32_t current_cluster = 0;
@@ -488,15 +528,17 @@ void upload_file(const char *filename, const char *newname) {
             uint32_t next_cluster = current_cluster + 1;
             update_fat_entry(current_cluster, bytes_remaining > 0 ? next_cluster : EOC);
             current_cluster = next_cluster;
-        } 
-        else {
+        } else {
+            // Mark the last cluster as end of chain
             update_fat_entry(current_cluster, EOC);
         }
     }
 
+    // Update directory entry
     new_entry.DIR_FstClusLO = first_cluster & 0xFFFF;
     new_entry.DIR_FstClusHI = (first_cluster >> 16) & 0xFFFF;
 
+    // Write directory entry
     memcpy(&((DirEntry *)sector_buffer)[entry_index], &new_entry, sizeof(DirEntry));
     if (write_disk_sector(sector, sector_buffer) != 1) {
         printf("Error: Could not update directory entry\n");
@@ -505,6 +547,7 @@ void upload_file(const char *filename, const char *newname) {
     fclose(src_file);
     printf("File copied successfully\n");
 }
+
 
 void cmd_stat(const char *filename)
 {
@@ -615,7 +658,8 @@ void cmd_cd(const char *dirname)
     {
         if (current_dir_cluster != bs.rootCluster)
         {
-            //TODO:implement getting parent diractory
+            // TODO: Implement getting parent directory
+            // This requires maintaining a directory stack or reading parent directory entries
         }
         return;
     }
@@ -661,6 +705,7 @@ void list_directory_entries(uint32_t cluster) {
     }
 
     while (1) {
+        // Read entire cluster
         fseek(disk_img, sector * bytes_per_sector, SEEK_SET);
         if (fread(cluster_buffer, bytes_per_cluster, 1, disk_img) != 1) {
             printf("Error: Could not read cluster\n");
@@ -668,25 +713,30 @@ void list_directory_entries(uint32_t cluster) {
             return;
         }
 
+        // Process each directory entry in the cluster
         for (uint32_t i = 0; i < bytes_per_cluster; i += sizeof(DirEntry)) {
             DirEntry* dir = (DirEntry*)(cluster_buffer + i);
 
+            // Check for end of directory
             if (dir->DIR_Name[0] == 0x00) {
                 free(cluster_buffer);
-                return; 
+                return;  // End of directory, exit function
             }
 
-            if (dir->DIR_Name[0] == 0xE5 ||
-                (dir->DIR_Attr & ATTRIBUTE_VOLUME_ID) ||
-                dir->DIR_Name[0] == '.' ||
-                (unsigned char)dir->DIR_Name[0] == 0xE5) 
+            // Skip deleted entries, volume labels, and special entries
+            if (dir->DIR_Name[0] == 0xE5 ||              // Deleted entry
+                (dir->DIR_Attr & ATTRIBUTE_VOLUME_ID) ||      // Volume ID
+                dir->DIR_Name[0] == '.' ||               // . and ..
+                (unsigned char)dir->DIR_Name[0] == 0xE5) // Another check for deleted entries
             {
                 continue;
             }
 
+            // Process valid entry
             char name[13];
             memset(name, 0, sizeof(name));
 
+            // Copy filename and extension
             memcpy(name, dir->DIR_Name, 8);
             if (dir->DIR_Name[8] != ' ') {
                 int nameLen = strlen(name);
@@ -696,10 +746,12 @@ void list_directory_entries(uint32_t cluster) {
                 memcpy(name + nameLen + 1, dir->DIR_Name + 8, 3);
             }
 
+            // Trim trailing spaces and dots
             int len = strlen(name);
             while (len > 0 && (name[len - 1] == ' ' || (name[len - 1] == '.' && len > 1)))
                 name[--len] = 0;
 
+            // Only print if name is not empty and not deleted
             if (len > 0) {
                 printf("%s", name);
                 if (dir->DIR_Attr & ATTRIBUTE_DIRECTORY)
@@ -708,6 +760,7 @@ void list_directory_entries(uint32_t cluster) {
             }
         }
 
+        // Get next cluster
         uint32_t next_cluster = get_fat_entry(cluster);
         if (next_cluster >= EOC)
             break;
@@ -719,6 +772,9 @@ void list_directory_entries(uint32_t cluster) {
     free(cluster_buffer);
 }
 
+
+
+// Implementation of filesystem operations
 int open_filesystem(const char *filename)
 {
     if (strlen(filename) > 100)
@@ -733,6 +789,7 @@ int open_filesystem(const char *filename)
         return -1;
     }
 
+    // Read boot sector
     fseek(disk_img, 0, SEEK_SET);
     if (fread(&bs, sizeof(BootSector), 1, disk_img) != 1)
     {
@@ -769,7 +826,187 @@ void display_filesystem_info(void)
     printf("rootCluster: 0x%X (%d)\n", bs.rootCluster, bs.rootCluster);
     printf("fsInfoSector: 0x%X (%d)\n", bs.fsInfoSector, bs.fsInfoSector);
 }
-// add execute_command
+
+void execute_command(char *cmd)
+{
+    char *token = strtok(cmd, " \t\n");
+    if (!token)
+        return;
+
+    // Convert command to lowercase
+    char command[Mx_COMMAND_LENGTH];
+    strcpy(command, token);
+    for (int i = 0; command[i]; i++)
+    {
+        command[i] = tolower(command[i]);
+    }
+
+    if (strcmp(command, "open") == 0)
+    {
+        token = strtok(NULL, " \t\n");
+        if (!token)
+        {
+            printf("Error: No filename specified\n");
+            return;
+        }
+        if (disk_img)
+        {
+            printf("Error: File system image already open\n");
+            return;
+        }
+        if (open_filesystem(token) != 0)
+        {
+            printf("Error: File system image not found\n");
+        }
+    }
+    else if (strcmp(command, "close") == 0)
+    {
+        if (!disk_img)
+        {
+            printf("Error: File system not open\n");
+            return;
+        }
+        close_filesystem();
+    }
+    else if (strcmp(command, "info") == 0)
+    {
+        if (!disk_img)
+        {
+            printf("Error: File system not open\n");
+            return;
+        }
+        display_filesystem_info();
+    }
+    else if (strcmp(command, "quit") == 0 || strcmp(command, "exit") == 0)
+    {
+        if (disk_img)
+        {
+            close_filesystem();
+        }
+        exit(0);
+    }
+    else if (strcmp(command, "stat") == 0)
+    {
+        token = strtok(NULL, " \t\n");
+        if (!token)
+        {
+            printf("Error: No filename specified\n");
+            return;
+        }
+        cmd_stat(token);
+    }
+    else if (strcmp(command, "get") == 0)
+    {
+        token = strtok(NULL, " \t\n");
+        if (!token)
+        {
+            printf("Error: No filename specified\n");
+            return;
+        }
+        char *src_name = token;
+        token = strtok(NULL, " \t\n");
+        cmd_get(src_name, token);
+    }
+    else if (strcmp(command, "cd") == 0)
+    {
+        token = strtok(NULL, " \t\n");
+        if (!token)
+        {
+            printf("Error: No directory specified\n");
+            return;
+        }
+        cmd_cd(token);
+    }
+    else if (strcmp(command, "ls") == 0)
+    {
+        cmd_ls();
+    }
+    else if (strcmp(command, "put") == 0)
+    {
+        token = strtok(NULL, " \t\n");
+        if (!token)
+        {
+            printf("Error: No filename specified\n");
+            return;
+        }
+        char *src_name = token;
+        token = strtok(NULL, " \t\n");
+        upload_file(src_name, token);
+    }
+    else if (strcmp(command, "del") == 0)
+    {
+        token = strtok(NULL, " \t\n");
+        if (!token)
+        {
+            printf("Error: No filename specified\n");
+            return;
+        }
+        delete_file(token);
+    }
+    else if (strcmp(command, "undel") == 0)
+    {
+        token = strtok(NULL, " \t\n");
+        if (!token)
+        {
+            printf("Error: No filename specified\n");
+            return;
+        }
+        restore_deleted_file(token);
+    }
+    else if (strcmp(command, "read") == 0)
+    {
+        token = strtok(NULL, " \t\n");
+        if (!token)
+        {
+            printf("Error: Missing parameters\n");
+            return;
+        }
+        char *filename = token;
+
+        token = strtok(NULL, " \t\n");
+        if (!token)
+        {
+            printf("Error: Missing position\n");
+            return;
+        }
+        uint32_t position = atoi(token);
+
+        token = strtok(NULL, " \t\n");
+        if (!token)
+        {
+            printf("Error: Missing number of bytes\n");
+            return;
+        }
+        uint32_t num_bytes = atoi(token);
+
+        // Check for optional format flag
+        token = strtok(NULL, " \t\n");
+        int format = FORMAT_HEX; // Default format
+        if (token)
+        {
+            if (strcmp(token, "-ascii") == 0)
+            {
+                format = FORMAT_ASCII;
+            }
+            else if (strcmp(token, "-dec") == 0)
+            {
+                format = FORMAT_DEC;
+            }
+        }
+
+        read_file_content(filename, position, num_bytes, format);
+    }
+    else
+    {
+        if (!disk_img)
+        {
+            printf("Error: File system image must be opened first\n");
+            return;
+        }
+        printf("Error: Unknown command\n");
+    }
+}
+
 int main()
 {
     char cmd_line[Mx_COMMAND_LENGTH];
@@ -780,11 +1017,14 @@ int main()
         if (!fgets(cmd_line, sizeof(cmd_line), stdin))
             break;
 
+        // Skip empty lines
         if (cmd_line[0] == '\n')
             continue;
 
+        // Remove trailing newline
         cmd_line[strcspn(cmd_line, "\n")] = 0;
 
+        // Process command
         execute_command(cmd_line);
     }
 
